@@ -75,6 +75,80 @@ class TestVehicle(unittest.TestCase):
         with self.assertRaises(ValueError):
             vehicle.validate()
 
+    def test_vehicle_can_traverse_valid_road(self):
+        vehicle = create_vehicle("MAN TGX")
+
+        road = {
+            "closed": False,
+            "max_weight_t": 40,
+            "max_height_m": 4.2,
+            "max_width_m": 2.6,
+            "max_length_m": 18.75,
+        }
+
+        self.assertTrue(vehicle.can_traverse(road))
+
+    def test_vehicle_cannot_traverse_road_with_weight_limit(self):
+        vehicle = create_vehicle("MAN TGX")
+
+        road = {
+            "max_weight_t": 34.9,
+            "max_height_m": 4.2,
+            "max_width_m": 2.6,
+            "max_length_m": 18.75,
+        }
+
+        self.assertFalse(vehicle.can_traverse(road))
+
+    def test_vehicle_cannot_traverse_road_with_height_limit(self):
+        vehicle = create_vehicle("MAN TGX")
+
+        road = {
+            "max_weight_t": 40,
+            "max_height_m": 3.9,
+            "max_width_m": 2.6,
+            "max_length_m": 18.75,
+        }
+
+        self.assertFalse(vehicle.can_traverse(road))
+
+    def test_vehicle_cannot_traverse_road_with_width_limit(self):
+        vehicle = create_vehicle("MAN TGX")
+
+        road = {
+            "max_weight_t": 40,
+            "max_height_m": 4.2,
+            "max_width_m": 2.5,
+            "max_length_m": 18.75,
+        }
+
+        self.assertFalse(vehicle.can_traverse(road))
+
+    def test_vehicle_cannot_traverse_road_with_length_limit(self):
+        vehicle = create_vehicle("MAN TGX")
+
+        road = {
+            "max_weight_t": 40,
+            "max_height_m": 4.2,
+            "max_width_m": 2.6,
+            "max_length_m": 16.0,
+        }
+
+        self.assertFalse(vehicle.can_traverse(road))
+
+    def test_vehicle_cannot_traverse_closed_road(self):
+        vehicle = create_vehicle("MAN TGX")
+
+        road = {
+            "closed": True,
+            "max_weight_t": 40,
+            "max_height_m": 4.2,
+            "max_width_m": 2.6,
+            "max_length_m": 18.75,
+        }
+
+        self.assertFalse(vehicle.can_traverse(road))
+
 
 if __name__ == "__main__":
     unittest.main()

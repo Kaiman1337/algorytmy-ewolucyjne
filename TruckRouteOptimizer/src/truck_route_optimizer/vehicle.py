@@ -51,6 +51,29 @@ class Vehicle:
         if self.gross_weight_kg > self.max_gross_weight_kg:
             raise ValueError("Przekroczono dopuszczalną masę całkowitą.")
 
+    def can_traverse(self, road: dict) -> bool:
+        """Sprawdza, czy ciężarówka może przejechać daną drogą."""
+
+        if road.get("closed", False):
+            return False
+
+        # Masa pojazdu jest podawana w kg, a ograniczenie drogi w tonach.
+        gross_weight_t = self.gross_weight_kg / 1000
+
+        if gross_weight_t > road.get("max_weight_t", float("inf")):
+            return False
+
+        if self.height_m > road.get("max_height_m", float("inf")):
+            return False
+
+        if self.width_m > road.get("max_width_m", float("inf")):
+            return False
+
+        if self.length_m > road.get("max_length_m", float("inf")):
+            return False
+
+        return True
+
     def get_information(self) -> str:
         """Zwraca czytelne informacje o pojeździe."""
 
