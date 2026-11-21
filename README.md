@@ -2,11 +2,13 @@
 
 # Truck Route Optimizer
 
-Aplikacja służąca do optymalizacji tras przejazdu samochodu ciężarowego z wykorzystaniem **algorytmu genetycznego**. Projekt został przygotowany w ramach przedmiotu *Algorytmy ewolucyjne*.
+Aplikacja służąca do optymalizacji tras przejazdu samochodów ciężarowych z wykorzystaniem **algorytmu genetycznego**. Projekt został przygotowany w ramach przedmiotu *Algorytmy ewolucyjne*.
 
 Program pozwala wybrać miasto początkowe, miasto docelowe oraz profil pojazdu, a następnie wykorzystuje algorytm genetyczny do poszukiwania korzystnej trasy w symulowanej sieci drogowej.
 
 W procesie optymalizacji uwzględniane są między innymi czas przejazdu, zużycie paliwa, ograniczenia pojazdu oraz warunki panujące na poszczególnych odcinkach dróg.
+
+Aplikacja umożliwia również modyfikowanie warunków drogowych, przeprowadzanie wielokrotnych eksperymentów oraz automatyczne zapisywanie ich wyników w celu późniejszej analizy.
 
 ## 1. Cel projektu
 
@@ -23,7 +25,7 @@ Program wykorzystuje populację potencjalnych rozwiązań, które są stopniowo 
 
 Każdy osobnik reprezentuje możliwą trasę przejazdu ciężarówki pomiędzy wybranymi miastami.
 
-Warto zaznaczyć, że zastosowany model stanowi wariant problemu wyznaczania trasy w sieci drogowej pomiędzy określonym punktem początkowym i docelowym. Nie jest to klasyczna wersja problemu komiwojażera, w której wymagane jest odwiedzenie wszystkich miast.
+Warto zaznaczyć, że zastosowany model stanowi wariant problemu wyznaczania trasy w sieci drogowej pomiędzy określonym punktem początkowym i docelowym. Nie jest to klasyczna wersja problemu komiwojażera, w której wymagane jest odwiedzenie wszystkich miast i powrót do punktu początkowego.
 
 ## 2. Wykorzystane technologie
 
@@ -32,8 +34,9 @@ Warto zaznaczyć, że zastosowany model stanowi wariant problemu wyznaczania tra
 | Python | Główny język programowania |
 | DEAP | Framework do tworzenia i uruchamiania algorytmów ewolucyjnych |
 | NetworkX | Reprezentacja i obsługa grafu drogowego |
-| Matplotlib | Wizualizacja sieci drogowej i wyznaczonej trasy |
+| Matplotlib | Wizualizacja sieci drogowej i wyznaczonej trasy oraz wykresów eksperymentalnych |
 | Tkinter | Graficzny interfejs użytkownika |
+| unittest | Testy jednostkowe |
 
 **Ważne rozróżnienie dotyczące wkładu własnego:**
 
@@ -43,7 +46,7 @@ Logika związana z konkretnym problemem transportowym została opracowana w rama
 
 ## 3. Model sieci drogowej
 
-Sieć drogowa została przedstawiona w postaci skierowanego grafu ważonego z wykorzystaniem biblioteki NetworkX.
+Sieć drogowa została przedstawiona w postaci skierowanego grafu z wykorzystaniem biblioteki NetworkX.
 
 - Wierzchołki reprezentują miasta.
 - Krawędzie reprezentują bezpośrednie połączenia drogowe.
@@ -285,15 +288,20 @@ Domyślna konfiguracja wykorzystywana przez interfejs graficzny:
 
 | Parametr | Wartość |
 |---|---:|
+| Liczba niezależnych przebiegów | 10 |
 | Wielkość populacji | 50 |
 | Liczba generacji | 100 |
 | Prawdopodobieństwo krzyżowania | 0,8 |
 | Prawdopodobieństwo mutacji | 0,2 |
 | Liczba osobników elitarnych | 2 |
 | Rozmiar turnieju | 3 |
-| Ziarno generatora losowego | 42 |
+| Początkowe ziarno generatora losowego | 42 |
+
+Każdy kolejny przebieg wykorzystuje następne ziarno generatora losowego. Przy początkowym ziarnie 42 są to wartości od 42 do 51.
 
 Ziarno generatora losowego pozwala uzyskać powtarzalne wyniki przy identycznych danych wejściowych i konfiguracji.
+
+Wielokrotne uruchomienia umożliwiają analizę wpływu losowości na działanie algorytmu.
 
 ## 8. Obliczanie parametrów przejazdu
 
@@ -365,13 +373,25 @@ Pozwala on zmieniać parametry odcinków, w tym:
 
 Zmiany są stosowane w obu kierunkach danego połączenia i uwzględniane podczas kolejnej optymalizacji.
 
+### 9.1. Automatyczne uruchamianie eksperymentów
+
+Po wybraniu miasta początkowego, miasta docelowego i profilu pojazdu użytkownik może uruchomić optymalizację z poziomu interfejsu.
+
+Zamiast pojedynczego przebiegu algorytmu GUI uruchamia serię 10 niezależnych eksperymentów.
+
+Każdy przebieg wykorzystuje te same parametry algorytmu i warunki drogowe, ale inne ziarno generatora losowego.
+
+Obliczenia wykonywane są w osobnym wątku, dzięki czemu interfejs graficzny pozostaje responsywny podczas pracy algorytmu.
+
+Po zakończeniu eksperymentów program prezentuje najlepsze znalezione rozwiązanie oraz jego parametry.
+
 ## 10. Eksperymenty i analiza wyników
 
 Projekt zawiera osobny moduł umożliwiający przeprowadzanie serii eksperymentów z wykorzystaniem algorytmu genetycznego.
 
-W ramach eksperymentów możliwe jest wykonanie co najmniej 10 niezależnych przebiegów algorytmu dla tej samej konfiguracji problemu.
+W ramach eksperymentów wykonywanych jest 10 niezależnych przebiegów algorytmu dla tej samej konfiguracji problemu.
 
-Każdy przebieg może wykorzystywać inne ziarno generatora losowego.
+Każdy przebieg wykorzystuje inne ziarno generatora losowego.
 
 Pozwala to sprawdzić, jak zmieniają się wyniki algorytmu w zależności od losowości procesu ewolucyjnego.
 
@@ -385,18 +405,98 @@ Moduł eksperymentalny umożliwia:
 - obliczanie odchyleń standardowych,
 - przygotowywanie wykresów wyników.
 
-Wyniki mogą być zapisywane w postaci plików CSV, JSON, TXT oraz wykresów PNG.
+### 10.1. Automatyczny zapis wyników
 
-Dzięki temu możliwe jest późniejsze porównywanie przebiegów i przygotowanie analizy wyników do sprawozdania.
+Po uruchomieniu eksperymentu z poziomu GUI program automatycznie tworzy katalog wynikowy:
 
-Wyniki zapisane w katalogu `experiment_results` powinny być interpretowane razem z konfiguracją eksperymentu. W szczególności należy zweryfikować, czy zostały wygenerowane na aktualnej wersji sieci drogowej.
+```text
+experiment_results/
+└── Koszalin - Bielsko-Biała #001/
+```
+
+Nazwa katalogu zależy od wybranych miast. Numer pozwala odróżnić kolejne eksperymenty przeprowadzone dla tej samej pary miast.
+
+Przykładowa struktura katalogu:
+
+```text
+experiment_results/
+└── Koszalin - Bielsko-Biała #001/
+    │
+    ├── aggregate_history.csv
+    ├── best_solution.txt
+    ├── experiment_config.json
+    ├── fuel_results.png
+    ├── run_summary.csv
+    ├── time_results.png
+    │
+    └── runs/
+        ├── run_01.json
+        ├── run_02.json
+        ├── run_03.json
+        ├── run_04.json
+        ├── run_05.json
+        ├── run_06.json
+        ├── run_07.json
+        ├── run_08.json
+        ├── run_09.json
+        └── run_10.json
+```
+
+### 10.2. Opis zapisywanych plików
+
+| Plik | Zawartość |
+|---|---|
+| `aggregate_history.csv` | Zagregowane statystyki kolejnych pokoleń z wszystkich przebiegów |
+| `best_solution.txt` | Najlepsza znaleziona trasa i jej parametry |
+| `experiment_config.json` | Konfiguracja eksperymentu, parametry algorytmu, pojazd i dane sieci drogowej |
+| `fuel_results.png` | Wykres przedstawiający wyniki optymalizacji zużycia paliwa |
+| `run_summary.csv` | Zestawienie wyników poszczególnych przebiegów |
+| `time_results.png` | Wykres przedstawiający wyniki optymalizacji czasu przejazdu |
+| `runs/run_XX.json` | Szczegółowe wyniki pojedynczego przebiegu, w tym najlepsza trasa i historia kolejnych pokoleń |
+
+### 10.3. Agregowanie wyników
+
+Wyniki poszczególnych przebiegów są łączone w celu uzyskania zbiorczych statystyk.
+
+Dla kolejnych pokoleń obliczane są między innymi:
+
+- średnia najlepszych czasów przejazdu,
+- odchylenie standardowe najlepszych czasów,
+- średnia czasów całych populacji,
+- odchylenie standardowe średnich czasów populacji,
+- średnia najlepszych wartości zużycia paliwa,
+- odchylenie standardowe najlepszych wartości zużycia paliwa,
+- średnia zużycia paliwa całych populacji,
+- odchylenie standardowe średnich wartości zużycia paliwa.
+
+Dzięki temu można analizować zarówno jakość najlepszych znalezionych rozwiązań, jak i zachowanie całej populacji.
+
+Należy pamiętać, że statystyki czasu i zużycia paliwa są agregowane osobno. Nie oznacza to, że każda z tych wartości opisuje tego samego osobnika.
+
+Wyniki eksperymentów powinny być interpretowane razem z konfiguracją, dla której zostały wygenerowane.
+
+### 10.4. Przykładowa konfiguracja eksperymentu
+
+Przykładowy eksperyment może wykorzystywać następujące ustawienia:
+
+| Parametr | Wartość |
+|---|---:|
+| Miasto początkowe | Koszalin |
+| Miasto docelowe | Bielsko-Biała |
+| Profil pojazdu | MAN TGX |
+| Liczba przebiegów | 10 |
+| Ziarna losowości | 42–51 |
+| Wielkość populacji | 50 |
+| Liczba generacji | 100 |
+
+Takie ustawienia pozwalają porównać wyniki uzyskane podczas niezależnych uruchomień algorytmu.
 
 ## 11. Struktura projektu
 
 Projekt został podzielony na moduły odpowiedzialne za poszczególne elementy aplikacji.
 
 ```text
-algorytmy-ewolucujme/
+algorytmy-ewolucyjne/
 │
 ├── .gitignore
 ├── LICENSE
@@ -409,12 +509,7 @@ algorytmy-ewolucujme/
     ├── run_experiments.py
     │
     ├── experiment_results/
-    │   ├── aggregate_history.csv
-    │   ├── best_solution.txt
-    │   ├── experiment_config.json
-    │   ├── fuel_results.png
-    │   ├── run_summary.csv
-    │   └── time_results.png
+    │   └── (lokalne wyniki eksperymentów)
     │
     ├── src/
     │   └── truck_route_optimizer/
@@ -451,10 +546,12 @@ algorytmy-ewolucujme/
 | `route_operators.py` | Generowanie tras oraz operatory krzyżowania i mutacji |
 | `genetic_algorithm.py` | Konfiguracja i uruchamianie algorytmu genetycznego z wykorzystaniem DEAP |
 | `visualization.py` | Rysowanie grafu i znalezionej trasy |
-| `gui.py` | Interfejs użytkownika |
+| `gui.py` | Interfejs użytkownika i integracja eksperymentów |
 | `experiments.py` | Przeprowadzanie wielokrotnych eksperymentów i agregowanie wyników |
-| `experiment_visualization.py` | Przygotowywanie wizualizacji wyników eksperymentów |
-| `run_experiments.py` | Uruchamianie eksperymentów |
+| `experiment_visualization.py` | Zapisywanie wyników eksperymentów i przygotowywanie wykresów |
+| `run_experiments.py` | Niezależny skrypt do uruchamiania serii eksperymentów |
+
+**Uwaga:** katalog `experiment_results/` jest przeznaczony na lokalnie generowane wyniki i nie jest częścią śledzonych plików repozytorium Git.
 
 ## 12. Instalacja i uruchomienie
 
@@ -504,6 +601,18 @@ python main.py
 
 Uruchomiona zostanie aplikacja z interfejsem graficznym.
 
+### 12.5. Uruchomienie eksperymentów z poziomu konsoli
+
+Projekt zawiera również skrypt `run_experiments.py`, który pozwala uruchomić serię eksperymentów bez korzystania z interfejsu graficznego.
+
+Z katalogu `TruckRouteOptimizer`:
+
+```powershell
+python run_experiments.py
+```
+
+Wyniki zostaną zapisane w katalogu określonym w skrypcie.
+
 ## 13. Testowanie
 
 Projekt zawiera testy jednostkowe sprawdzające poprawność najważniejszych elementów aplikacji.
@@ -549,4 +658,6 @@ Dzięki reprezentacji osobników jako list miast oraz zastosowaniu odpowiednio d
 
 Uwzględnienie ograniczeń pojazdu i warunków drogowych pozwala rozszerzyć klasyczne podejście do wyznaczania tras o dodatkowe kryteria związane z transportem ciężarowym.
 
-Biblioteka DEAP odpowiada za mechanizmy algorytmu genetycznego, natomiast logika problemowa, model sieci drogowej, walidacja, obliczenia, operatory dostosowane do problemu oraz integracja z interfejsem zostały opracowane w ramach projektu.
+Dodatkowo moduł eksperymentalny umożliwia wielokrotne uruchamianie algorytmu, porównywanie wyników oraz analizowanie wpływu losowości na proces optymalizacji.
+
+Biblioteka DEAP odpowiada za mechanizmy algorytmu genetycznego, natomiast logika problemowa, model sieci drogowej, walidacja, obliczenia, operatory dostosowane do problemu, eksperymenty oraz integracja z interfejsem zostały opracowane w ramach projektu.
