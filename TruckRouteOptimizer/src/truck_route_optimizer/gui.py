@@ -122,8 +122,43 @@ class TruckRouteOptimizerGUI:
             ]
         )
 
+        
+        # Własny układ Combobox z dokładnie jednym przyciskiem strzałki.
+        style.layout(
+            "Single.TCombobox",
+            [
+                (
+                    "Combobox.field",
+                    {
+                        "sticky": "nswe",
+                        "children": [
+                            (
+                                "Combobox.downarrow",
+                                {
+                                    "side": "right",
+                                    "sticky": "ns"
+                                }
+                            ),
+                            (
+                                "Combobox.padding",
+                                {
+                                    "sticky": "nswe",
+                                    "children": [
+                                        (
+                                            "Combobox.textarea",
+                                            {"sticky": "nswe"}
+                                        )
+                                    ]
+                                }
+                            )
+                        ]
+                    }
+                )
+            ]
+        )
+
         style.configure(
-            "TCombobox",
+            "Single.TCombobox",
             fieldbackground=self.input_bg,
             background=self.input_bg,
             foreground=self.fg,
@@ -133,7 +168,7 @@ class TruckRouteOptimizerGUI:
         )
 
         style.map(
-            "TCombobox",
+            "Single.TCombobox",
             fieldbackground=[("readonly", self.input_bg)],
             foreground=[("readonly", self.fg)],
             selectbackground=[("readonly", self.input_bg)],
@@ -160,6 +195,30 @@ class TruckRouteOptimizerGUI:
             background=[("active", self.bg)],
             foreground=[("active", "#ffffff")]
         )
+
+
+    def _update_vehicle_information(self, event=None):
+        """Aktualizuje informacje o wybranym pojeździe."""
+        profile = self.vehicle_var.get()
+
+        if not profile:
+            return
+
+        vehicle = create_vehicle(profile)
+
+        information = (
+            f"Masa własna: {vehicle.curb_weight_kg / 1000:.2f} t"
+            f"    |    Ładunek: {vehicle.payload_kg / 1000:.2f} t"
+            f"    |    Masa całkowita: {vehicle.gross_weight_kg / 1000:.2f} t"
+            f"    |    DMC: {vehicle.max_gross_weight_kg / 1000:.2f} t\n"
+            f"Wysokość: {vehicle.height_m:.2f} m"
+            f"    |    Szerokość: {vehicle.width_m:.2f} m"
+            f"    |    Długość: {vehicle.length_m:.2f} m"
+            f"    |    Spalanie: {vehicle.fuel_consumption_l_100km:.1f} l/100 km"
+        )
+
+        self.vehicle_information_label.config(text=information)
+
 
     def _build_interface(self):
         main_frame = ttk.Frame(self.root, padding=15)
@@ -196,6 +255,7 @@ class TruckRouteOptimizerGUI:
             textvariable=self.start_var,
             values=self.cities,
             state="readonly",
+            style="Single.TCombobox",
             width=18
         ).grid(row=0, column=1, sticky="ew", padx=5, pady=5)
 
@@ -211,6 +271,7 @@ class TruckRouteOptimizerGUI:
             textvariable=self.end_var,
             values=self.cities,
             state="readonly",
+            style="Single.TCombobox",
             width=18
         ).grid(row=0, column=3, sticky="ew", padx=5, pady=5)
 
@@ -226,6 +287,7 @@ class TruckRouteOptimizerGUI:
             textvariable=self.vehicle_var,
             values=get_available_profiles(),
             state="readonly",
+            style="Single.TCombobox",
             width=22
         )
         self.vehicle_combo.grid(
@@ -234,11 +296,36 @@ class TruckRouteOptimizerGUI:
         )
         self.vehicle_combo.current(0)
 
+
+        self.vehicle_combo.bind(
+            "<<ComboboxSelected>>",
+            self._update_vehicle_information
+        )
+
+        self.vehicle_information_label = ttk.Label(
+            settings_frame,
+            text="",
+            justify="left",
+            foreground=self.muted,
+            wraplength=1100
+        )
+        self.vehicle_information_label.grid(
+            row=1,
+            column=0,
+            columnspan=8,
+            sticky="w",
+            padx=5,
+            pady=(8, 4)
+        )
+
+        self._update_vehicle_information()
+
         self.optimize_button = ttk.Button(
             settings_frame,
             text="Optymalizuj",
             style="Accent.TButton",
-            command=self.optimize_route
+            command=self.optimize_route,
+            width=18
         )
         self.optimize_button.grid(
             row=0, column=6,
@@ -284,21 +371,166 @@ class TruckRouteOptimizerGUI:
         draw_road_network(self.graph, ax=self.ax)
         self.canvas.draw()
 
-        # Wyniki pod mapą
+        # Wyniki pod mapą - przewijany panel
         result_frame = ttk.LabelFrame(
             main_frame,
             text="Wyniki optymalizacji",
-            padding=10
+            padding=8
         )
         result_frame.pack(fill="x")
 
-        self.result_label = ttk.Label(
+        result_container = tk.Frame(
             result_frame,
+            bg=self.bg
+        )
+        result_container.pack(fill="both", expand=True)
+
+        # Canvas umożliwiający przewijanie zawartości
+        self.result_canvas = tk.Canvas(
+            result_container,
+            bg=self.bg,
+            highlightthickness=0,
+            height=135
+        )
+        self.result_canvas.pack(
+            side="left",
+            fill="both",
+            expand=True
+        )
+
+        # Pionowy pasek przewijania
+        self.result_scrollbar = ttk.Scrollbar(
+            result_container,
+            orient="vertical",
+            command=self.result_canvas.yview
+        )
+        self.result_scrollbar.pack(
+            side="right",
+            fill="y"
+        )
+
+        self.result_canvas.configure(
+            yscrollcommand=self.result_scrollbar.set
+        )
+
+        # Wewnętrzny kontener na tekst wyników
+        self.result_content = tk.Frame(
+            self.result_canvas,
+            bg=self.bg
+        )
+
+        self.result_window = self.result_canvas.create_window(
+            (0, 0),
+            window=self.result_content,
+            anchor="nw"
+        )
+
+        self.result_label = ttk.Label(
+            self.result_content,
             text="Wybierz parametry trasy i uruchom optymalizację.",
             justify="left",
             wraplength=1100
         )
-        self.result_label.pack(anchor="w")
+        self.result_label.pack(
+            anchor="w",
+            fill="x",
+            padx=5,
+            pady=5
+        )
+
+        # Aktualizacja obszaru przewijania po zmianie zawartości
+        self.result_content.bind(
+            "<Configure>",
+            self._update_result_scroll_region
+        )
+
+        # Dopasowanie szerokości tekstu do panelu
+        self.result_canvas.bind(
+            "<Configure>",
+            self._resize_result_content
+        )
+
+        # Obsługa kółka myszy
+        self.result_canvas.bind(
+            "<Enter>",
+            self._bind_result_mousewheel
+        )
+        self.result_canvas.bind(
+            "<Leave>",
+            self._unbind_result_mousewheel
+        )
+
+    def _update_result_scroll_region(self, event=None):
+        """Aktualizuje obszar przewijania wyników."""
+
+        self.result_canvas.configure(
+            scrollregion=self.result_canvas.bbox("all")
+        )
+
+    def _resize_result_content(self, event):
+        """Dopasowuje szerokość zawartości do panelu."""
+
+        self.result_canvas.itemconfigure(
+            self.result_window,
+            width=event.width
+        )
+
+        self.result_label.configure(
+            wraplength=max(100, event.width - 15)
+        )
+
+
+    def _bind_result_mousewheel(self, event=None):
+        """Włącza przewijanie tylko dla panelu wyników."""
+        widgets = (
+            self.result_canvas,
+            self.result_content,
+            self.result_label
+        )
+
+        for widget in widgets:
+            widget.bind("<MouseWheel>", self._on_result_mousewheel)
+            widget.bind("<Button-4>", self._on_result_mousewheel)
+            widget.bind("<Button-5>", self._on_result_mousewheel)
+
+    def _unbind_result_mousewheel(self, event=None):
+        """Usuwa lokalne powiązania przewijania."""
+        widgets = (
+            self.result_canvas,
+            self.result_content,
+            self.result_label
+        )
+
+        for widget in widgets:
+            widget.unbind("<MouseWheel>")
+            widget.unbind("<Button-4>")
+            widget.unbind("<Button-5>")
+
+    def _on_result_mousewheel(self, event):
+        """Przewija panel wyników."""
+        if event.num == 4:
+            self.result_canvas.yview_scroll(-1, "units")
+        elif event.num == 5:
+            self.result_canvas.yview_scroll(1, "units")
+        else:
+            self.result_canvas.yview_scroll(
+                int(-event.delta / 120),
+                "units"
+            )
+
+        return "break"
+    
+    def _set_result_text(self, text):
+        """Aktualizuje wyniki i przewija panel na początek."""
+        self.result_label.config(text=text)
+
+        self.result_content.update_idletasks()
+
+        self.result_canvas.configure(
+            scrollregion=self.result_canvas.bbox("all")
+        )
+
+        self.result_canvas.yview_moveto(0)
 
     def _open_road_editor(self):
         if self.road_editor is not None and self.road_editor.winfo_exists():
@@ -352,6 +584,7 @@ class TruckRouteOptimizerGUI:
             textvariable=self.road_var,
             values=road_options,
             state="readonly",
+            style="Single.TCombobox",
             width=35
         )
         self.road_combo.grid(
@@ -424,6 +657,7 @@ class TruckRouteOptimizerGUI:
             textvariable=self.roadworks_var,
             values=["0", "1", "2", "3", "4", "5"],
             state="readonly",
+            style="Single.TCombobox",
             width=12
         )
         self.roadworks_combo.grid(
@@ -580,8 +814,8 @@ class TruckRouteOptimizerGUI:
             # Odświeżenie mapy
             self._redraw_map()
 
-            self.result_label.config(
-                text=(
+            self._set_result_text(
+                (
                     f"Zmieniono warunki odcinka {start} ↔ {end}. "
                     "Uruchom ponownie optymalizację, "
                     "aby uwzględnić nowe warunki."
@@ -624,7 +858,7 @@ class TruckRouteOptimizerGUI:
 
         self.optimize_button.config(
             state="disabled",
-            text="Optymalizacja..."
+            text="Pracuję..."
         )
         self.root.update_idletasks()
 
@@ -658,8 +892,8 @@ class TruckRouteOptimizerGUI:
 
             segments_text = "\n".join(segments)
 
-            self.result_label.config(
-                text=(
+            self._set_result_text(
+                (
                     f"Pojazd: {vehicle.name}\n"
                     f"Trasa: {route_text}\n"
                     f"Czas przejazdu: {result.best_time_hours:.2f} h    |    "
@@ -668,7 +902,6 @@ class TruckRouteOptimizerGUI:
                     f"Przejechane odcinki:\n{segments_text}"
                 )
             )
-
 
             self._redraw_map(route=result.best_route)
 

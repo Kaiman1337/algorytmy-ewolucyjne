@@ -1,0 +1,14 @@
+{
+    "runs": 10,
+    "base_seed": 42,
+    "parameters": {
+        "runs": 10,
+        "base_seed": 42,
+        "population_size": 50,
+        "generations": 100,
+        "crossover_probability": 0.8,
+        "mutation_probability": 0.2,
+        "elite_size": 2,
+        "tournament_size": 3
+    }
+}

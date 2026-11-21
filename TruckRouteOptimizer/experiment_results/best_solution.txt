@@ -1,0 +1,7 @@
+NAJLEPSZE ROZWIĄZANIE
+====================
+
+Trasa: Warszawa -> Kraków
+Czas przejazdu: 2.5000 h
+Zużycie paliwa: 84.0000 l
+Dystans: 300.00 km
