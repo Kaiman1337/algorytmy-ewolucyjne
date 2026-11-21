@@ -1,8 +1,20 @@
+
 from dataclasses import dataclass
 from networkx import DiGraph
 
 from truck_route_optimizer.route_validator import validate_route
 from truck_route_optimizer.vehicle import Vehicle
+
+
+# Poziom robót drogowych i odpowiadający mu mnożnik czasu przejazdu.
+ROADWORKS_FACTORS = {
+    0: 1.0,
+    1: 1.1,
+    2: 1.2,
+    3: 1.4,
+    4: 1.7,
+    5: 2.0,
+}
 
 
 @dataclass
@@ -36,7 +48,24 @@ def calculate_route_metrics(
         speed_limit = road["speed_limit_kmh"]
 
         traffic_factor = road.get("traffic_factor", 1.0)
-        roadworks_factor = road.get("roadworks_factor", 1.0)
+
+        if "roadworks_level" in road:
+            roadworks_level = road["roadworks_level"]
+
+            if (
+                not isinstance(roadworks_level, int)
+                or isinstance(roadworks_level, bool)
+                or roadworks_level not in ROADWORKS_FACTORS
+            ):
+                raise ValueError(
+                    f"Nieprawidłowy poziom robót drogowych: "
+                    f"{start} -> {end}."
+                )
+
+            roadworks_factor = ROADWORKS_FACTORS[roadworks_level]
+        else:
+            # Kompatybilność ze starszymi danymi dróg.
+            roadworks_factor = road.get("roadworks_factor", 1.0)
 
         if speed_limit <= 0:
             raise ValueError(

@@ -18,7 +18,8 @@ class GeneticAlgorithmResult:
     best_route: list[str]
     best_time_hours: float
     best_fuel_liters: float
-    history: list[dict]
+    best_distance_km: float
+    history: list[dict] 
 
 
 def _create_deap_types():
@@ -219,17 +220,18 @@ def optimize_route(
 
         record_best(generation)
 
-    best_individual = hall_of_fame[0]
+    best_route = list(hall_of_fame[0])
 
     best_metrics = calculate_route_metrics(
         graph,
-        list(best_individual),
-        vehicle,
+        best_route,
+        vehicle
     )
 
     return GeneticAlgorithmResult(
-        best_route=list(best_individual),
+        best_route=best_route,
         best_time_hours=best_metrics.time_hours,
         best_fuel_liters=best_metrics.fuel_liters,
-        history=history,
+        best_distance_km=best_metrics.distance_km,
+        history=history
     )
