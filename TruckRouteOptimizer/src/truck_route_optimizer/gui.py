@@ -1,13 +1,20 @@
 
 import tkinter as tk
 import math
+import queue
+import re
+import threading
 
 from tkinter import ttk, messagebox
 
+from pathlib import Path
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
-from truck_route_optimizer.genetic_algorithm import optimize_route
+from truck_route_optimizer.experiments import run_experiments
+from truck_route_optimizer.experiment_visualization import (
+    save_experiment_results,
+)
 from truck_route_optimizer.vehicle import create_vehicle, get_available_profiles
 from truck_route_optimizer.visualization import draw_road_network
 from truck_route_optimizer.road_network import create_road_network
@@ -26,6 +33,9 @@ class TruckRouteOptimizerGUI:
         self.road_editor = None
         self.road_lookup = {}
         self.road_vars = {}
+        
+        self.experiment_queue = queue.Queue()
+        self.experiment_running = False
 
         self._configure_style()
         self._build_interface()
@@ -844,7 +854,198 @@ class TruckRouteOptimizerGUI:
         self.ax.set_facecolor(self.panel)
         self.canvas.draw()
 
+
+    def _create_experiment_directory(self, start, end):
+        """Tworzy unikalny katalog dla kolejnego eksperymentu."""
+
+        results_root = (
+            Path(__file__).resolve().parents[2]
+            / "experiment_results"
+        )
+
+        results_root.mkdir(parents=True, exist_ok=True)
+
+        # Usunięcie znaków niedozwolonych w nazwach Windows.
+        route_name = f"{start} - {end}"
+        route_name = re.sub(
+            r'[<>:"/\\|?*]',
+            "-",
+            route_name,
+        ).strip(" .")
+
+        experiment_number = 1
+
+        while True:
+            directory = (
+                results_root
+                / f"{route_name} #{experiment_number:03d}"
+            )
+
+            if not directory.exists():
+                return directory
+
+            experiment_number += 1
+
+
+    def _build_experiment_parameters(self, graph, vehicle, start, end):
+        """Tworzy kompletny zapis konfiguracji eksperymentu."""
+
+        parameters = {
+            "runs": 10,
+            "base_seed": 42,
+            "population_size": 50,
+            "generations": 100,
+            "crossover_probability": 0.8,
+            "mutation_probability": 0.2,
+            "elite_size": 2,
+            "tournament_size": 3,
+
+            "start_city": start,
+            "end_city": end,
+            "vehicle": vars(vehicle).copy(),
+
+            # Pełna topologia grafu wraz z atrybutami miast.
+            "nodes": [
+                {
+                    "name": node,
+                    "attributes": dict(attributes),
+                }
+                for node, attributes in graph.nodes(data=True)
+            ],
+
+            # Wszystkie skierowane krawędzie.
+            # Drogi dwukierunkowe są zapisane w obu kierunkach.
+            "edges": [
+                {
+                    "start": source,
+                    "end": destination,
+                    "attributes": dict(attributes),
+                }
+                for source, destination, attributes
+                in graph.edges(data=True)
+            ],
+        }
+
+        return parameters
+
+
+    def _finish_experiment(self, result, parameters, output_dir):
+        """Zapisuje wyniki i aktualizuje GUI."""
+
+        try:
+            save_experiment_results(
+                result=result,
+                output_dir=output_dir,
+                base_seed=parameters["base_seed"],
+                parameters=parameters,
+            )
+
+            best = result.best_result
+            vehicle = create_vehicle(parameters["vehicle"]["name"])
+
+            route_text = " → ".join(best.best_route)
+
+            segments = []
+
+            for start_city, end_city in zip(
+                best.best_route,
+                best.best_route[1:],
+            ):
+                distance = self.graph[start_city][end_city]["distance_km"]
+
+                segments.append(
+                    f"  • {start_city} → {end_city}: {distance:.2f} km"
+                )
+
+            segments_text = "\n".join(segments)
+
+            run_number = next(
+                (
+                    index + 1
+                    for index, run in enumerate(result.runs)
+                    if run is best
+                ),
+                None,
+            )
+
+            self._set_result_text(
+                (
+                    f"EKSPERYMENT ZAKOŃCZONY\n\n"
+                    f"Pojazd: {vehicle.name}\n"
+                    f"Trasa: {route_text}\n"
+                    f"Czas przejazdu: {best.best_time_hours:.2f} h    |    "
+                    f"Dystans: {best.best_distance_km:.2f} km    |    "
+                    f"Zużycie paliwa: {best.best_fuel_liters:.2f} l\n"
+                    f"Najlepszy przebieg: {run_number} / {len(result.runs)}\n"
+                    f"Ziarna losowości: "
+                    f"{parameters['base_seed']}–"
+                    f"{parameters['base_seed'] + len(result.runs) - 1}\n\n"
+                    f"Przejechane odcinki:\n{segments_text}\n\n"
+                    f"Wyniki zapisano w:\n{output_dir}"
+                )
+            )
+
+            self._redraw_map(route=best.best_route)
+
+            messagebox.showinfo(
+                "Eksperyment zakończony",
+                (
+                    f"Przeprowadzono {len(result.runs)} przebiegów.\n\n"
+                    f"Najlepszy czas: {best.best_time_hours:.2f} h\n"
+                    f"Najlepsze zużycie paliwa: "
+                    f"{best.best_fuel_liters:.2f} l\n\n"
+                    f"Wyniki zapisano w:\n{output_dir}"
+                ),
+            )
+
+        except Exception as error:
+            messagebox.showerror(
+                "Błąd zapisywania wyników",
+                str(error),
+            )
+
+
+    def _poll_experiment_queue(self):
+        """Odbiera wynik pracy wątku bez blokowania GUI."""
+
+        try:
+            status, payload = self.experiment_queue.get_nowait()
+
+        except queue.Empty:
+            if self.experiment_running:
+                self.root.after(100, self._poll_experiment_queue)
+
+            return
+
+        self.experiment_running = False
+
+        self.optimize_button.config(
+            state="normal",
+            text="Optymalizuj",
+        )
+
+        if status == "error":
+            messagebox.showerror(
+                "Błąd eksperymentu",
+                str(payload),
+            )
+            return
+
+        result, parameters, output_dir = payload
+
+        self._finish_experiment(
+            result,
+            parameters,
+            output_dir,
+        )
+
+
     def optimize_route(self):
+        """Uruchamia serię 10 niezależnych eksperymentów."""
+
+        if self.experiment_running:
+            return
+
         start = self.start_var.get()
         end = self.end_var.get()
         profile = self.vehicle_var.get()
@@ -852,77 +1053,95 @@ class TruckRouteOptimizerGUI:
         if start == end:
             messagebox.showwarning(
                 "Nieprawidłowa trasa",
-                "Miasto początkowe i docelowe muszą być różne."
+                "Miasto początkowe i docelowe muszą być różne.",
             )
             return
-
-        self.optimize_button.config(
-            state="disabled",
-            text="Pracuję..."
-        )
-        self.root.update_idletasks()
 
         try:
             vehicle = create_vehicle(profile)
 
-            result = optimize_route(
-                graph=self.graph,
-                vehicle=vehicle,
-                start_city=start,
-                end_city=end,
-                population_size=50,
-                generations=100,
-                random_seed=42
+            # Kopia grafu zabezpiecza eksperyment przed zmianami
+            # warunków drogowych dokonywanymi później w GUI.
+            experiment_graph = self.graph.copy()
+
+            parameters = self._build_experiment_parameters(
+                experiment_graph,
+                vehicle,
+                start,
+                end,
             )
 
-            route_text = " → ".join(result.best_route)
-
-            # Lista przejechanych odcinków
-            segments = []
-
-            for start_city, end_city in zip(
-                result.best_route,
-                result.best_route[1:]
-            ):
-                distance = self.graph[start_city][end_city]["distance_km"]
-
-                segments.append(
-                    f"  • {start_city} → {end_city}: {distance} km"
-                )
-
-            segments_text = "\n".join(segments)
-
-            self._set_result_text(
-                (
-                    f"Pojazd: {vehicle.name}\n"
-                    f"Trasa: {route_text}\n"
-                    f"Czas przejazdu: {result.best_time_hours:.2f} h    |    "
-                    f"Dystans: {result.best_distance_km:.2f} km    |    "
-                    f"Zużycie paliwa: {result.best_fuel_liters:.2f} l\n\n"
-                    f"Przejechane odcinki:\n{segments_text}"
-                )
-            )
-
-            self._redraw_map(route=result.best_route)
-
-        except (ValueError, RuntimeError) as error:
-            messagebox.showerror(
-                "Błąd optymalizacji",
-                str(error)
+            output_dir = self._create_experiment_directory(
+                start,
+                end,
             )
 
         except Exception as error:
             messagebox.showerror(
-                "Nieoczekiwany błąd",
-                str(error)
+                "Błąd przygotowania eksperymentu",
+                str(error),
             )
+            return
 
-        finally:
-            self.optimize_button.config(
-                state="normal",
-                text="Optymalizuj"
+        self.experiment_running = True
+
+        self.optimize_button.config(
+            state="disabled",
+            text="Eksperyment trwa...",
+        )
+
+        self._set_result_text(
+            (
+                f"Trwa eksperyment: {start} → {end}\n\n"
+                f"Pojazd: {vehicle.name}\n"
+                f"Liczba przebiegów: {parameters['runs']}\n"
+                f"Populacja: {parameters['population_size']}\n"
+                f"Liczba pokoleń: {parameters['generations']}\n"
+                f"Ziarna losowości: "
+                f"{parameters['base_seed']}–"
+                f"{parameters['base_seed'] + parameters['runs'] - 1}\n\n"
+                "Proszę czekać. Wyniki zostaną zapisane automatycznie."
             )
+        )
 
+        def worker():
+            try:
+                result = run_experiments(
+                    graph=experiment_graph,
+                    vehicle=vehicle,
+                    start_city=start,
+                    end_city=end,
+                    runs=parameters["runs"],
+                    base_seed=parameters["base_seed"],
+                    population_size=parameters["population_size"],
+                    generations=parameters["generations"],
+                    crossover_probability=parameters["crossover_probability"],
+                    mutation_probability=parameters["mutation_probability"],
+                    elite_size=parameters["elite_size"],
+                    tournament_size=parameters["tournament_size"],
+                )
+
+                self.experiment_queue.put(
+                    (
+                        "success",
+                        (result, parameters, output_dir),
+                    )
+                )
+
+            except Exception as error:
+                self.experiment_queue.put(
+                    ("error", error)
+                )
+
+        threading.Thread(
+            target=worker,
+            daemon=True,
+        ).start()
+
+        self.root.after(
+            100,
+            self._poll_experiment_queue,
+        )
 
 def run_gui():
     root = tk.Tk()

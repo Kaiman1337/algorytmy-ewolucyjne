@@ -76,6 +76,38 @@ def _save_metric_plot(
     plt.close()
 
 
+def _save_individual_runs(
+    result: ExperimentResult,
+    output_dir: Path,
+    base_seed: int,
+) -> None:
+    """Zapisuje szczegółowe wyniki każdego przebiegu."""
+
+    runs_dir = output_dir / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+
+    for index, run in enumerate(result.runs):
+        run_data = {
+            "run": index + 1,
+            "seed": base_seed + index,
+            "best_route": run.best_route,
+            "best_time_hours": run.best_time_hours,
+            "best_fuel_liters": run.best_fuel_liters,
+            "best_distance_km": run.best_distance_km,
+            "history": run.history,
+        }
+
+        run_path = runs_dir / f"run_{index + 1:02d}.json"
+
+        with run_path.open("w", encoding="utf-8") as file:
+            json.dump(
+                run_data,
+                file,
+                indent=4,
+                ensure_ascii=False,
+            )
+
+
 def save_experiment_results(
     result: ExperimentResult,
     output_dir: str | Path,
@@ -83,7 +115,7 @@ def save_experiment_results(
     parameters: dict | None = None,
 ) -> None:
     """
-    Zapisuje wyniki eksperymentów do plików CSV, JSON i PNG.
+    Zapisuje komplet wyników eksperymentu.
 
     Generuje:
     - aggregate_history.csv
@@ -92,12 +124,19 @@ def save_experiment_results(
     - best_solution.txt
     - time_results.png
     - fuel_results.png
+    - runs/run_XX.json dla każdego przebiegu
     """
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Statystyki kolejnych pokoleń.
+    if not result.runs:
+        raise ValueError("Brak wyników eksperymentów do zapisania.")
+
+    if not result.aggregate_history:
+        raise ValueError("Brak zagregowanej historii eksperymentów.")
+
+    # 1. Statystyki kolejnych pokoleń.
     aggregate_path = output_dir / "aggregate_history.csv"
 
     with aggregate_path.open(
@@ -112,7 +151,7 @@ def save_experiment_results(
         writer.writeheader()
         writer.writerows(result.aggregate_history)
 
-    # Podsumowanie poszczególnych uruchomień.
+    # 2. Podsumowanie poszczególnych uruchomień.
     summary_path = output_dir / "run_summary.csv"
 
     with summary_path.open(
@@ -142,32 +181,59 @@ def save_experiment_results(
                 "best_route": " -> ".join(run.best_route),
             })
 
-    # Parametry eksperymentu.
+    # 3. Pełna konfiguracja eksperymentu.
     config = {
         "runs": len(result.runs),
         "base_seed": base_seed,
+        "seeds": [
+            base_seed + index
+            for index in range(len(result.runs))
+        ],
         "parameters": parameters or {},
     }
 
     config_path = output_dir / "experiment_config.json"
 
     with config_path.open("w", encoding="utf-8") as file:
-        json.dump(config, file, indent=4, ensure_ascii=False)
+        json.dump(
+            config,
+            file,
+            indent=4,
+            ensure_ascii=False,
+        )
 
-    # Najlepsze rozwiązanie ze wszystkich uruchomień.
+    # 4. Najlepsze rozwiązanie ze wszystkich uruchomień.
     best = result.best_result
+
+    best_run_number = next(
+        (
+            index + 1
+            for index, run in enumerate(result.runs)
+            if run is best
+        ),
+        None,
+    )
 
     best_path = output_dir / "best_solution.txt"
 
     with best_path.open("w", encoding="utf-8") as file:
         file.write("NAJLEPSZE ROZWIĄZANIE\n")
         file.write("====================\n\n")
+
+        file.write(f"Najlepszy przebieg: {best_run_number}\n")
         file.write(f"Trasa: {' -> '.join(best.best_route)}\n")
         file.write(f"Czas przejazdu: {best.best_time_hours:.4f} h\n")
         file.write(f"Zużycie paliwa: {best.best_fuel_liters:.4f} l\n")
         file.write(f"Dystans: {best.best_distance_km:.2f} km\n")
 
-    # Wykres czasu przejazdu.
+    # 5. Szczegółowe wyniki każdego przebiegu.
+    _save_individual_runs(
+        result=result,
+        output_dir=output_dir,
+        base_seed=base_seed,
+    )
+
+    # 6. Wykres czasu przejazdu.
     _save_metric_plot(
         history=result.aggregate_history,
         output_path=output_dir / "time_results.png",
@@ -176,7 +242,7 @@ def save_experiment_results(
         y_label="Czas przejazdu [h]",
     )
 
-    # Wykres zużycia paliwa.
+    # 7. Wykres zużycia paliwa.
     _save_metric_plot(
         history=result.aggregate_history,
         output_path=output_dir / "fuel_results.png",
