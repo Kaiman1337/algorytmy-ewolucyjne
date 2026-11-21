@@ -1,6 +1,6 @@
 import random
-
 from dataclasses import dataclass
+from statistics import fmean, pstdev
 
 from deap import base, creator, tools
 
@@ -19,7 +19,7 @@ class GeneticAlgorithmResult:
     best_time_hours: float
     best_fuel_liters: float
     best_distance_km: float
-    history: list[dict] 
+    history: list[dict]
 
 
 def _create_deap_types():
@@ -65,8 +65,8 @@ def optimize_route(
     1. Minimalny czas przejazdu.
     2. Minimalne zużycie paliwa przy takim samym czasie.
 
-    Zwraca najlepszą znalezioną trasę, jej parametry
-    oraz historię najlepszego osobnika w kolejnych pokoleniach.
+    Zwraca najlepszą znalezioną trasę, jej parametry oraz
+    statystyki populacji w kolejnych pokoleniach.
     """
     if population_size < 2:
         raise ValueError("Populacja musi liczyć co najmniej 2 osobniki.")
@@ -75,13 +75,20 @@ def optimize_route(
         raise ValueError("Liczba pokoleń musi być większa od zera.")
 
     if not 0 <= crossover_probability <= 1:
-        raise ValueError("Prawdopodobieństwo krzyżowania musi być w zakresie 0-1.")
+        raise ValueError(
+            "Prawdopodobieństwo krzyżowania musi być w zakresie 0-1."
+        )
 
     if not 0 <= mutation_probability <= 1:
-        raise ValueError("Prawdopodobieństwo mutacji musi być w zakresie 0-1.")
+        raise ValueError(
+            "Prawdopodobieństwo mutacji musi być w zakresie 0-1."
+        )
 
     if not 1 <= elite_size < population_size:
-        raise ValueError("Liczba elit musi być mniejsza od populacji i co najmniej równa 1.")
+        raise ValueError(
+            "Liczba elit musi być mniejsza od populacji "
+            "i co najmniej równa 1."
+        )
 
     if tournament_size < 2:
         raise ValueError("Rozmiar turnieju musi wynosić co najmniej 2.")
@@ -163,16 +170,45 @@ def optimize_route(
 
     history = []
 
-    def record_best(generation):
-        best = hall_of_fame[0]
+    def record_generation(generation, current_population):
+        """
+        Zapisuje statystyki aktualnej populacji oraz
+        najlepszego rozwiązania znalezionego do tej pory.
+        """
+        times = [
+            individual.fitness.values[0]
+            for individual in current_population
+        ]
+
+        fuels = [
+            individual.fitness.values[1]
+            for individual in current_population
+        ]
+
+        best_so_far = hall_of_fame[0]
 
         history.append({
             "generation": generation,
-            "time_hours": best.fitness.values[0],
-            "fuel_liters": best.fitness.values[1],
+
+            # Najlepszy osobnik znaleziony do tej pory.
+            # Zachowane dla kompatybilności z poprzednią wersją.
+            "time_hours": best_so_far.fitness.values[0],
+            "fuel_liters": best_so_far.fitness.values[1],
+
+            # Statystyki czasu w aktualnej populacji.
+            "best_time_hours": min(times),
+            "worst_time_hours": max(times),
+            "mean_time_hours": fmean(times),
+            "std_time_hours": pstdev(times),
+
+            # Statystyki zużycia paliwa w aktualnej populacji.
+            "best_fuel_liters": min(fuels),
+            "worst_fuel_liters": max(fuels),
+            "mean_fuel_liters": fmean(fuels),
+            "std_fuel_liters": pstdev(fuels),
         })
 
-    record_best(0)
+    record_generation(0, population)
 
     # Główna pętla algorytmu genetycznego.
     for generation in range(1, generations + 1):
@@ -218,14 +254,15 @@ def optimize_route(
 
         hall_of_fame.update(population)
 
-        record_best(generation)
+        # Zapis statystyk po zakończeniu pokolenia.
+        record_generation(generation, population)
 
     best_route = list(hall_of_fame[0])
 
     best_metrics = calculate_route_metrics(
         graph,
         best_route,
-        vehicle
+        vehicle,
     )
 
     return GeneticAlgorithmResult(
@@ -233,5 +270,5 @@ def optimize_route(
         best_time_hours=best_metrics.time_hours,
         best_fuel_liters=best_metrics.fuel_liters,
         best_distance_km=best_metrics.distance_km,
-        history=history
+        history=history,
     )

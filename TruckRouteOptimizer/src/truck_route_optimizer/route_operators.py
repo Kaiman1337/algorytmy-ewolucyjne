@@ -1,8 +1,11 @@
 import random
 import networkx as nx
 
+from collections import deque
+
 from truck_route_optimizer.route_validator import validate_route
 from truck_route_optimizer.vehicle import Vehicle
+
 
 
 def _find_random_path(
@@ -13,10 +16,11 @@ def _find_random_path(
     forbidden_nodes: set[str] | None = None,
 ) -> list[str] | None:
     """
-    Szuka losowej, poprawnej trasy między dwoma miastami.
+    Szuka losowej, poprawnej trasy za pomocą BFS.
 
-    Wyszukiwanie wykorzystuje losową kolejność sąsiadów oraz
-    nie pozwala odwiedzać tego samego miasta więcej niż raz.
+    Losowa kolejność sąsiadów zapewnia różnorodność tras.
+    BFS zapobiega wielokrotnemu eksplorowaniu tych samych
+    kombinacji ścieżek.
     """
     if start_city not in graph or end_city not in graph:
         return None
@@ -28,15 +32,27 @@ def _find_random_path(
     forbidden.discard(start_city)
     forbidden.discard(end_city)
 
-    def search(current_city: str, path: list[str]) -> list[str] | None:
+    queue = deque([start_city])
+    previous = {start_city: None}
+
+    while queue:
+        current_city = queue.popleft()
+
         if current_city == end_city:
-            return path.copy()
+            path = []
+            city = end_city
+
+            while city is not None:
+                path.append(city)
+                city = previous[city]
+
+            return list(reversed(path))
 
         neighbors = list(graph.successors(current_city))
         random.shuffle(neighbors)
 
         for next_city in neighbors:
-            if next_city in path or next_city in forbidden:
+            if next_city in previous or next_city in forbidden:
                 continue
 
             road = graph.get_edge_data(current_city, next_city)
@@ -44,15 +60,10 @@ def _find_random_path(
             if not vehicle.can_traverse(road):
                 continue
 
-            result = search(next_city, path + [next_city])
+            previous[next_city] = current_city
+            queue.append(next_city)
 
-            if result is not None:
-                return result
-
-        return None
-
-    return search(start_city, [start_city])
-
+    return None
 
 def generate_random_route(
     graph: nx.DiGraph,
